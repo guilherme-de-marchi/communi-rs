@@ -18,7 +18,10 @@ pub fn run(addr: &String) {
     });
 
     for stream in listener.incoming() {
-        handle_stream(stream);
+        if let Err(e) = handle_stream(stream) {
+            eprintln!("error handling connection: {e}");
+            process::exit(1);
+        }
     }
 }
 
@@ -30,8 +33,7 @@ fn handle_stream(stream: Result<net::TcpStream, io::Error>) -> Result<(), io::Er
             if let Err(e) = stream.read_to_end(&mut buf) {
                 return Err(e);
             }
-
-            
+            println!("{:?}", buf)
         }
     }
     Ok(())
