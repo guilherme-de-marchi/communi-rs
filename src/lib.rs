@@ -1,8 +1,10 @@
+mod listener;
+mod streams;
+
 use std::{process, thread, io::{Read, Write}};
 use std::net;
 use std::io;
 use text_io::read;
-
 
 struct Peer {
     listener: net::TcpListener,
@@ -30,26 +32,26 @@ fn listen(addr: &String) {
     });
 
     for stream in listener.incoming() {
-        if let Err(e) = handle_stream(stream) {
-            eprintln!("error handling connection: {e}");
-            process::exit(1);
-        }
-    }
-}
-
-fn handle_stream(r: Result<net::TcpStream, io::Error>) -> Result<(), io::Error> {
-    match r {
-        Err(e) => { return Err(e) },
-        Ok(mut stream) => {
-            // let mut buf: Vec<u8> = Vec::new(); 
-            let mut buf = [0; 10];
-            if let Err(e) = stream.read(&mut buf) {
-                return Err(e);
+        match stream {
+            Err(e) => {
+                eprintln!("error handling connection: {e}");
+                process::exit(1);
+            },
+            Ok(mut stream) => {
+                thread::spawn(move || {
+                    loop {
+                        // let mut buf: Vec<u8> = Vec::new(); 
+                        let mut buf = [0; 10];
+                        if let Err(e) = stream.read(&mut buf) {
+                            eprintln!("error handling connection: {e}");
+                            return
+                        }
+                        println!("{:?}", buf);
+                    }
+                });
             }
-            println!("{:?}", buf)
         }
     }
-    Ok(())
 }
 
 fn connect(addr: &String) {
