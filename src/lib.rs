@@ -1,31 +1,36 @@
-mod listener;
-mod streams;
+mod commands;
 
 use std::{process, thread, io::{Read, Write}};
 use std::net;
-use std::io;
-use text_io::read;
-
-struct Peer {
-    listener: net::TcpListener,
-    clients: Vec<net::TcpStream>
-}
+use std::sync::mpsc;
 
 pub fn run(addr: &String) {
-    let input: String = text_io::read!("{}\n");
-    match input.as_str() {
-        "listen" => listen(addr),
-        "connect" => connect(addr),
-        _ => {
-            eprintln!("invalid input");
-            process::exit(1);
+    let mut input: String;
+    loop {
+        input = text_io::read!("{}\n");
+        match input.as_str() {
+            "listen" => listen(addr),
+            "connect" => connect(addr),
+            _ => continue
         }
-    }
-
-    
+    }    
 }
 
 fn listen(addr: &String) {
+    let mut command_handler = commands::new();
+    let (tx, rx): (mpsc::Sender<String>, mpsc::Receiver<String>) = mpsc::channel();
+    thread::spawn(move || loop {
+        let received = match rx.recv() {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("error receiving from channel: {e}");
+                return
+            }
+        };
+
+        command_handler.hosts.insert(0, received);
+    });
+
     let listener = net::TcpListener::bind(addr).unwrap_or_else(|e| {
         eprintln!("could not bind: {e}");
         process::exit(1);
@@ -33,24 +38,33 @@ fn listen(addr: &String) {
 
     for stream in listener.incoming() {
         match stream {
+            Ok(stream) => {
+                // let thread_ch = &command_handler;
+                let thread_tx = tx.clone();
+                thread::spawn(move || loop {
+                    handle_connection(stream, &command_handler, &thread_tx)
+                });
+            },
             Err(e) => {
                 eprintln!("error handling connection: {e}");
-                process::exit(1);
-            },
-            Ok(mut stream) => {
-                thread::spawn(move || {
-                    loop {
-                        // let mut buf: Vec<u8> = Vec::new(); 
-                        let mut buf = [0; 10];
-                        if let Err(e) = stream.read(&mut buf) {
-                            eprintln!("error handling connection: {e}");
-                            return
-                        }
-                        println!("{:?}", buf);
-                    }
-                });
+                continue
             }
         }
+    }
+}
+
+fn handle_connection(mut stream: net::TcpStream, command_handler: &commands::CommandHandler, tx: &mpsc::Sender<String>) {
+    let mut buf = [0; 1024];
+    if let Err(e) = stream.read(&mut buf) {
+        eprintln!("error handling connection: {e}");
+        return
+    }
+
+    let input = String::from_utf8_lossy(&buf).to_string();
+    println!("{input}");
+
+    if let Err(e) = command_handler.handle_input(tx, &input) {
+        eprintln!("error handling input '{input}': {e}");
     }
 }
 
