@@ -1,16 +1,16 @@
 use std::io;
 use std::collections::HashMap;
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex, Arc};
 
 pub struct CommandHandler {
-    pub commands: HashMap<String, fn(&CommandHandler, &mpsc::Sender<String>, Vec<&str>) -> Result<String, io::Error>>,
-    pub hosts: Vec<String>
+    pub commands: HashMap<String, fn(&CommandHandler, Vec<&str>) -> Result<String, io::Error>>,
+    pub hosts: Arc<Mutex<Vec<String>>>
 }
 
 pub fn new() -> CommandHandler {
     let mut ch = CommandHandler {
-        commands: (HashMap::new()),
-        hosts: Vec::new()
+        commands: HashMap::new(),
+        hosts: Arc::new(Mutex::new(Vec::new()))
     };
     ch.commands.insert("register".to_string(), register);
     ch.commands.insert("list".to_string(), list);
@@ -18,7 +18,7 @@ pub fn new() -> CommandHandler {
 }
 
 impl CommandHandler {
-    pub fn handle_input(&self, tx: &mpsc::Sender<String>, input: &String) -> Result<String, io::Error> {
+    pub fn handle_input(&self, input: &String) -> Result<String, io::Error> {
         let tokens: Vec<&str> = input.split_whitespace().collect();
         if tokens.len() == 0 {
             return Err(io::Error::new(
@@ -28,7 +28,7 @@ impl CommandHandler {
         }
     
         match self.commands.get(tokens[0]) {
-            Some(f) => return f(self, tx, tokens),
+            Some(f) => return f(self, tokens),
             None => return Err(io::Error::new(
                 io::ErrorKind::InvalidInput, 
                 "command not found"
@@ -37,7 +37,7 @@ impl CommandHandler {
     }    
 }
 
-pub fn register(ch: &CommandHandler, tx: &mpsc::Sender<String>, tokens: Vec<&str>) -> Result<String, io::Error> {
+pub fn register(ch: &CommandHandler, tokens: Vec<&str>) -> Result<String, io::Error> {
     if tokens.len() < 2 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput, 
@@ -45,15 +45,10 @@ pub fn register(ch: &CommandHandler, tx: &mpsc::Sender<String>, tokens: Vec<&str
         ))
     }
 
-    match tx.send(tokens[1].to_string()) {
-        Ok(_) => Ok("registered successfully".to_string()),
-        Err(e) => Err(io::Error::new(
-            io::ErrorKind::InvalidInput, 
-            "could not send to channel"
-        ))
-    }
+    ch.hosts.lock().unwrap().insert(0, tokens[1].to_string());
+    Ok("registered successfully".to_string())
 }
 
-pub fn list(ch: &CommandHandler, tx: &mpsc::Sender<String>, tokens: Vec<&str>) -> Result<String, io::Error> {
-    Ok(ch.hosts.join("\n"))
+pub fn list(ch: &CommandHandler, _: Vec<&str>) -> Result<String, io::Error> {
+    Ok(ch.hosts.lock().unwrap().join("\n"))
 }
