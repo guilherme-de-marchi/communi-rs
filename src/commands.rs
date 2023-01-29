@@ -1,16 +1,17 @@
 use std::io;
 use std::collections::HashMap;
+use std::fmt::format;
 use std::sync::{mpsc, Mutex, Arc};
 
 pub struct CommandHandler {
     pub commands: HashMap<String, fn(&CommandHandler, Vec<&str>) -> Result<String, io::Error>>,
-    pub hosts: Arc<Mutex<Vec<String>>>
+    pub hosts: Arc<Mutex<HashMap<String, String>>>
 }
 
 pub fn new() -> CommandHandler {
     let mut ch = CommandHandler {
         commands: HashMap::new(),
-        hosts: Arc::new(Mutex::new(Vec::new()))
+        hosts: Arc::new(Mutex::new(HashMap::new()))
     };
     ch.commands.insert("register".to_string(), register);
     ch.commands.insert("list".to_string(), list);
@@ -38,17 +39,21 @@ impl CommandHandler {
 }
 
 pub fn register(ch: &CommandHandler, tokens: Vec<&str>) -> Result<String, io::Error> {
-    if tokens.len() < 2 {
+    if tokens.len() < 3 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput, 
             "no enought arguments"
         ))
     }
 
-    ch.hosts.lock().unwrap().insert(0, tokens[1].to_string());
+    ch.hosts.lock().unwrap().insert(tokens[1].to_string(), tokens[2].to_string());
     Ok("registered successfully".to_string())
 }
 
 pub fn list(ch: &CommandHandler, _: Vec<&str>) -> Result<String, io::Error> {
-    Ok(ch.hosts.lock().unwrap().join("\n"))
+    let mut res = String::from("");
+    for (k, v) in &*ch.hosts.lock().unwrap() {
+        res += [k, ":", v, "\n"].join("").as_str();
+    }
+    Ok(res)
 }

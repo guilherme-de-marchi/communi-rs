@@ -17,6 +17,8 @@ pub fn run(addr: &String) {
 }
 
 fn listen(addr: &String) {
+    println!("started listening to connections");
+
     let command_handler = commands::new();
     let listener = net::TcpListener::bind(addr).unwrap_or_else(|e| {
         eprintln!("could not bind: {e}");
@@ -43,16 +45,29 @@ fn listen(addr: &String) {
 
 fn handle_connection(stream: &mut net::TcpStream, command_handler: &commands::CommandHandler) {
     let mut buf = [0; 1024];
-    if let Err(e) = stream.read(&mut buf) {
-        eprintln!("error handling connection: {e}");
-        return
-    }
+    let buf_read = match stream.read(&mut buf) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("error handling connection: {e}");
+            return
+        }
+    };
 
-    let input = String::from_utf8_lossy(&buf).to_string();
-    println!("{input}");
+    let mut input = String::from_utf8_lossy(&buf[..buf_read]).to_string();
+    input = input[..input.len()-2].to_string();
+    println!("input received: '{input}'");
 
-    if let Err(e) = command_handler.handle_input(&input) {
-        eprintln!("error handling input '{input}': {e}");
+    match command_handler.handle_input(&input) {
+        Ok(v) => {
+            if let Err(e) = stream.write_all((v + "\n").as_bytes()) {
+                eprintln!("error writting: {e}")
+            }
+        },
+        Err(e) => {
+            if let Err(e) = stream.write_all((e.to_string() + "\n").as_bytes()) {
+                eprintln!("error writting: {e}")
+            }
+        }
     }
 }
 
